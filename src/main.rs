@@ -3,8 +3,8 @@ use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use tracing::{info, warn, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{error, info, warn};
+use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::database::{Database, DbMessage};
 
@@ -90,10 +90,7 @@ impl Handler {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // logs
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
-        .finish();
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    let _guard = init_logs();
 
     // load database
     let database = Database::new().await?;
@@ -125,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
     // Start bot and wait for enter
     tokio::select! {
         _ = client.start()  => {
-            info!("Client stopped");
+            error!("Client stopped");
         }
         _ = tokio::task::spawn_blocking(||{
             wait_enter()
@@ -133,7 +130,7 @@ async fn main() -> anyhow::Result<()> {
             info!("User pressed enter");
         }
         _ = summarizer.start() => {
-            info!("Summarizer stopped");
+            error!("Summarizer stopped");
         }
     }
 
@@ -141,6 +138,30 @@ async fn main() -> anyhow::Result<()> {
     client.shard_manager.lock().await.shutdown_all().await;
     info!("Kasumi stopped");
     Ok(())
+}
+
+fn init_logs() -> WorkerGuard {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::{filter, Layer};
+
+    let file_appender = tracing_appender::rolling::hourly("logs", "prefix.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    let file_subscriber = tracing_subscriber::fmt::layer()
+        .compact()
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .with_filter(filter::LevelFilter::DEBUG);
+
+    let stdio_subscriber = tracing_subscriber::fmt::layer()
+        .pretty()
+        .with_filter(filter::LevelFilter::INFO);
+
+    tracing_subscriber::registry()
+        .with(stdio_subscriber)
+        .with(file_subscriber)
+        .init();
+    guard
 }
 
 fn wait_enter() {
