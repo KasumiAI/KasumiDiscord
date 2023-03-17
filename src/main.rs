@@ -1,9 +1,5 @@
-use std::borrow::BorrowMut;
-use std::sync::Arc;
-
-use chrono::prelude::*;
+use regex::{Captures, Regex};
 use serenity::async_trait;
-use serenity::client::bridge::gateway::ShardManager;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
@@ -19,12 +15,6 @@ mod gpt;
 mod prompts;
 mod summarizer;
 mod translate;
-
-struct DatabaseContainer;
-
-impl TypeMapKey for DatabaseContainer {
-    type Value = Database;
-}
 
 struct BotContainer;
 
@@ -46,24 +36,18 @@ impl EventHandler for Handler {
             return;
         }
 
-        let database = {
-            let data_read = ctx.data.read().await;
-            data_read
-                .get::<DatabaseContainer>()
-                .expect("Expected DatabaseContainer in TypeMap.")
-                .clone()
-        };
-
         let mut bot = {
             let data_read = ctx.data.read().await;
             data_read
                 .get::<BotContainer>()
-                .expect("Expected DatabaseContainer in TypeMap.")
+                .expect("Expected BotContainer in TypeMap.")
                 .clone()
         };
 
+        let message = Self::replace_ids(&ctx, &msg).await;
+
         if let Some(reply) = bot
-            .process_message(msg.channel_id.0, &msg.author.name, &msg.content)
+            .process_message(msg.channel_id.0, &msg.author.name, &message)
             .await
         {
             if let Err(why) = msg.channel_id.say(&ctx.http, reply).await {
@@ -74,6 +58,32 @@ impl EventHandler for Handler {
 
     async fn ready(&self, _: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+    }
+}
+
+impl Handler {
+    // TODO: refactor this
+    async fn replace_ids(ctx: &Context, msg: &Message) -> String {
+        let name_re = Regex::new(r"<@(\d+?)>").unwrap();
+        let users = if let Some(guild_id) = msg.guild_id {
+            guild_id.members(&ctx.http, None, None).await.ok()
+        } else {
+            None
+        };
+        let message = if let Some(users) = users {
+            name_re
+                .replace_all(&msg.content, |m: &Captures| {
+                    users
+                        .iter()
+                        .find(|u| u.user.id.0 == m[1].parse::<u64>().unwrap())
+                        .map(|u| u.user.name.clone())
+                        .unwrap_or_else(|| m[0].to_string())
+                })
+                .to_string()
+        } else {
+            msg.content.clone()
+        };
+        message
     }
 }
 
@@ -92,7 +102,10 @@ async fn main() -> anyhow::Result<()> {
     let gpt = gpt::ChatGPT::new(&envs::OPENAI_KEY);
     let google_tl = translate::GoogleTranslate::new();
     let deepl_tl = translate::DeepLTranslate::new(&envs::DEEPL_KEY);
-    let bot = bot::Bot::new(database.clone(), gpt, google_tl, deepl_tl);
+    let bot = bot::Bot::new(database.clone(), gpt.clone(), google_tl, deepl_tl);
+
+    // create summarizer
+    let summarizer = summarizer::Summarizer::new(gpt.clone(), database.clone());
 
     // create client
     let intents = GatewayIntents::GUILD_MESSAGES
@@ -106,7 +119,6 @@ async fn main() -> anyhow::Result<()> {
     // insert data
     {
         let mut data = client.data.write().await;
-        data.insert::<DatabaseContainer>(database);
         data.insert::<BotContainer>(bot);
     }
 
@@ -119,6 +131,9 @@ async fn main() -> anyhow::Result<()> {
             wait_enter()
         })  =>  {
             info!("User pressed enter");
+        }
+        _ = summarizer.start() => {
+            info!("Summarizer stopped");
         }
     }
 

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use chrono::prelude::*;
-use itertools::Itertools;
 use sqlx::sqlite::SqlitePool;
 use tokio::sync::Mutex;
 
@@ -35,7 +34,7 @@ impl Default for DbSummary {
         Self {
             channel: String::new(),
             summary: String::new(),
-            last_update: Utc::now().naive_utc(),
+            last_update: NaiveDateTime::from_timestamp_millis(0).unwrap(),
         }
     }
 }
@@ -48,6 +47,7 @@ pub struct Database {
 impl Database {
     pub async fn new() -> Result<Self, sqlx::error::Error> {
         let pool = SqlitePool::connect(&envs::DATABASE_URL).await?;
+        sqlx::migrate!().run(&pool).await?;
         Ok(Self {
             pool: Arc::new(Mutex::new(pool)),
         })
@@ -210,7 +210,7 @@ VALUES (?1, ?2, ?3);"#,
         Ok(())
     }
 
-    async fn channel_list(&self) -> Result<Vec<u64>, sqlx::error::Error> {
+    pub async fn channel_list(&self) -> Result<Vec<u64>, sqlx::error::Error> {
         struct Channel {
             channel: String,
         }

@@ -1,6 +1,5 @@
 use serde::Deserialize;
 use thiserror::Error;
-use tracing::info;
 
 const API_URL: &str = "https://translate.google.com/translate_a/single?client=at&dt=t&dj=1";
 const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_2_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36";

@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio::sync::Mutex;
 use tracing::debug;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -12,7 +15,7 @@ pub enum GptRole {
     Assistant,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub enum GptFinishReason {
     #[serde(rename = "stop")]
     Stop,
@@ -26,8 +29,9 @@ pub struct GptMessage {
     pub content: String,
 }
 
+#[derive(Clone)]
 pub struct ChatGPT {
-    key: String,
+    key: Arc<Mutex<String>>,
     client: reqwest::Client,
 }
 
@@ -49,9 +53,9 @@ pub struct GptError {
 
 #[derive(Debug, Deserialize)]
 pub struct GptUsage {
-    prompt_tokens: usize,
-    completion_tokens: usize,
-    total_tokens: usize,
+    pub prompt_tokens: usize,
+    pub completion_tokens: usize,
+    pub total_tokens: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,7 +93,7 @@ struct GptRequest<'s> {
 impl ChatGPT {
     pub fn new(key: &str) -> Self {
         Self {
-            key: key.to_string(),
+            key: Arc::new(Mutex::new(key.to_string())),
             client: reqwest::Client::new(),
         }
     }
@@ -107,11 +111,13 @@ impl ChatGPT {
 
         debug!("GPT Sending request: {:?}", request);
 
+        let key = self.key.lock().await;
+
         let resp = self
             .client
             .post("https://api.openai.com/v1/chat/completions")
             .json(&request)
-            .header("Authorization", format!("Bearer {}", self.key))
+            .header("Authorization", format!("Bearer {}", key))
             .send()
             .await?
             .json::<GptResponse>()

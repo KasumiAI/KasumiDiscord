@@ -1,0 +1,6 @@
+Do the following:
+1. Write a summary of the chat log. Include useful information from previous summary. Write it in the following format:
+SUMMARY {summary of the chat log} END
+2. Update user info with new information from the chat log. Include useful information from previous user info.
+Write it in the following format for each user:
+USER {nickname} INFO {updated information} END
