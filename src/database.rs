@@ -15,6 +15,20 @@ pub struct DbMessage {
     pub date_time: NaiveDateTime,
 }
 
+#[derive(Debug)]
+pub struct DbUser {
+    pub name: String,
+    pub info: String,
+    pub last_update: NaiveDateTime,
+}
+
+#[derive(Debug)]
+pub struct DbSummary {
+    pub channel: String,
+    pub summary: String,
+    pub last_update: NaiveDateTime,
+}
+
 #[derive(Clone)]
 pub struct Database {
     pool: Arc<Mutex<SqlitePool>>,
@@ -106,6 +120,83 @@ VALUES ( ?1, ?2, ?3, ?4, ?5 )"#,
         )
         .execute(&mut conn)
         .await?;
+        Ok(())
+    }
+
+    pub async fn get_users(&self, names: &[&str]) -> Result<Vec<DbUser>, sqlx::error::Error> {
+        let names = names
+            .iter()
+            .map(|name| format!("'{}'", name))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        let mut conn = self.pool.lock().await.acquire().await?;
+        let mut users = sqlx::query_as!(
+            DbUser,
+            r#"
+SELECT name as "name!", info as "info!", last_update as "last_update!"
+FROM users WHERE name IN ( ? )"#,
+            names
+        )
+        .fetch_all(&mut conn)
+        .await?;
+
+        Ok(users)
+    }
+
+    pub async fn update_user(&self, name: &str, info: &str) -> Result<(), sqlx::error::Error> {
+        let now = Utc::now().naive_utc();
+
+        let mut conn = self.pool.lock().await.acquire().await?;
+        sqlx::query!(
+            r#"
+INSERT OR REPLACE INTO users (name, info, last_update)
+VALUES (?1, ?2, ?3);"#,
+            name,
+            info,
+            now
+        )
+        .execute(&mut conn)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_summary(&self, channel: u64) -> Result<Option<DbSummary>, sqlx::error::Error> {
+        let channel = channel.to_string();
+
+        let mut conn = self.pool.lock().await.acquire().await?;
+        sqlx::query_as!(
+            DbSummary,
+            r#"
+SELECT channel as "channel!", summary as "summary!", last_update as "last_update!"
+FROM channels WHERE channel = ?"#,
+            channel
+        )
+        .fetch_optional(&mut conn)
+        .await
+    }
+
+    pub async fn update_summary(
+        &self,
+        channel: u64,
+        summary: &str,
+    ) -> Result<(), sqlx::error::Error> {
+        let now = Utc::now().naive_utc();
+        let channel = channel.to_string();
+
+        let mut conn = self.pool.lock().await.acquire().await?;
+        sqlx::query!(
+            r#"
+INSERT OR REPLACE INTO channels (channel, summary, last_update)
+VALUES (?1, ?2, ?3);"#,
+            channel,
+            summary,
+            now
+        )
+        .execute(&mut conn)
+        .await?;
+
         Ok(())
     }
 }
