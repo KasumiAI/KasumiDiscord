@@ -1,7 +1,9 @@
 use serde::Deserialize;
 use thiserror::Error;
+use tracing::info;
 
 const API_URL: &str = "https://translate.google.com/translate_a/single?client=at&dt=t&dj=1";
+const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_2_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36";
 
 #[derive(Debug, Deserialize)]
 struct Sentence {
@@ -23,6 +25,7 @@ pub enum GoogleError {
     Empty,
 }
 
+#[derive(Clone)]
 pub struct GoogleTranslate {
     client: reqwest::Client,
 }
@@ -40,6 +43,7 @@ impl GoogleTranslate {
             .client
             .post(API_URL)
             .form(&params)
+            .header("User-Agent", USER_AGENT)
             .send()
             .await?
             .json::<Response>()

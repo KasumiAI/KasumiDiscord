@@ -1,5 +1,9 @@
+use std::borrow::BorrowMut;
+use std::sync::Arc;
+
 use chrono::prelude::*;
 use serenity::async_trait;
+use serenity::client::bridge::gateway::ShardManager;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
@@ -8,6 +12,7 @@ use tracing_subscriber::FmtSubscriber;
 
 use crate::database::{Database, DbMessage};
 
+mod bot;
 mod database;
 mod envs;
 mod gpt;
@@ -17,6 +22,12 @@ struct DatabaseContainer;
 
 impl TypeMapKey for DatabaseContainer {
     type Value = Database;
+}
+
+struct BotContainer;
+
+impl TypeMapKey for BotContainer {
+    type Value = bot::Bot;
 }
 
 struct Handler;
@@ -41,35 +52,20 @@ impl EventHandler for Handler {
                 .clone()
         };
 
-        if let Err(e) = database
-            .add_message(&DbMessage {
-                channel: msg.channel_id.to_string(),
-                sender: msg.author.name.to_string(),
-                message_en: msg.content.to_string(),
-                message_ru: msg.content.to_string(),
-                date_time: Utc::now().naive_utc(),
-            })
+        let mut bot = {
+            let data_read = ctx.data.read().await;
+            data_read
+                .get::<BotContainer>()
+                .expect("Expected DatabaseContainer in TypeMap.")
+                .clone()
+        };
+
+        if let Some(reply) = bot
+            .process_message(msg.channel_id.0, &msg.author.name, &msg.content)
             .await
         {
-            warn!("Failed to add message to database: {:?}", e);
-        }
-
-        if msg.content == "!last" {
-            let to_send = match database
-                .get_messages(msg.channel_id.0, Utc::now().naive_utc(), 10)
-                .await
-            {
-                Ok(messages) => {
-                    let mut result = String::from("Messages:\n");
-                    for message in messages {
-                        result.push_str(&format!("- {:?}\n", message))
-                    }
-                    result
-                }
-                Err(e) => format!("Error: {:?}", e),
-            };
-            if let Err(why) = msg.channel_id.say(&ctx.http, to_send).await {
-                warn!("Error sending message: {:?}", why);
+            if let Err(why) = msg.channel_id.say(&ctx.http, reply).await {
+                warn!("Error sending reply: {:?}", why);
             }
         }
     }
@@ -91,6 +87,12 @@ async fn main() -> anyhow::Result<()> {
     let database = Database::new().await?;
 
     // create bot
+    let gpt = gpt::ChatGPT::new(&envs::OPENAI_KEY);
+    let google_tl = translate::GoogleTranslate::new();
+    let deepl_tl = translate::DeepLTranslate::new(&envs::DEEPL_KEY);
+    let bot = bot::Bot::new(database.clone(), gpt, google_tl, deepl_tl);
+
+    // create client
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
@@ -103,8 +105,30 @@ async fn main() -> anyhow::Result<()> {
     {
         let mut data = client.data.write().await;
         data.insert::<DatabaseContainer>(database);
+        data.insert::<BotContainer>(bot);
     }
 
-    client.start().await?;
+    // Start bot and wait for enter
+    tokio::select! {
+        _ = client.start()  => {
+            info!("Client stopped");
+        }
+        _ = tokio::task::spawn_blocking(||{
+            wait_enter()
+        })  =>  {
+            info!("User pressed enter");
+        }
+    }
+
+    // Stop the client
+    client.shard_manager.lock().await.shutdown_all().await;
+    info!("Kasumi stopped");
     Ok(())
+}
+
+fn wait_enter() {
+    use std::io;
+    let mut user_input = String::new();
+    let stdin = io::stdin(); // We get `Stdin` here.
+    let _ = stdin.read_line(&mut user_input);
 }

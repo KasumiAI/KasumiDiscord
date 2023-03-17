@@ -23,6 +23,7 @@ pub enum DeepLError {
     Empty,
 }
 
+#[derive(Clone)]
 pub struct DeepLTranslate {
     client: reqwest::Client,
     key: String,
