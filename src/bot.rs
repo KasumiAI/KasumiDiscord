@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use askama::Template;
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
+use regex::Regex;
 use tokio::sync::Mutex;
-use tracing::error;
+use tracing::{debug, error};
 
-use crate::gpt::ChatGPT;
+use crate::database::DbSummary;
+use crate::gpt::{ChatGPT, GptMessage, GptRole};
+use crate::prompts::{ChatSystem, CHAT_USER_PROMPT};
 use crate::{translate, Database, DbMessage};
 
 #[derive(Clone)]
@@ -40,7 +45,7 @@ impl Bot {
         message: &str,
     ) -> Option<String> {
         // translate message to english
-        let message_ru = match self.google_tl.translate(message, "en").await {
+        let message_en = match self.google_tl.translate(message, "en").await {
             Ok(message) => message,
             Err(e) => {
                 error!("Failed to translate message: {:?}", e);
@@ -54,8 +59,8 @@ impl Bot {
             .add_message(&DbMessage {
                 channel: channel_id.to_string(),
                 sender: sender.to_string(),
-                message_en: message.to_string(),
-                message_ru: message_ru.to_string(),
+                message_en: message_en.to_string(),
+                message_ru: message.to_string(),
                 date_time: Utc::now().naive_utc(),
             })
             .await
@@ -69,9 +74,80 @@ impl Bot {
             return None;
         }
 
-        // TODO: process message
+        // Make GPT prompt
+        let gpt_request = match self.get_prompt(channel_id).await {
+            Ok(request) => request,
+            Err(e) => {
+                error!("Failed to generate GPT prompt: {:?}", e);
+                return None;
+            }
+        };
 
-        Some("Ok".to_string())
+        // Send GPT request
+        let gpt_response = match self.gpt.lock().await.send(&gpt_request, 0.4).await {
+            Ok(response) => response,
+            Err(e) => {
+                error!("Failed to generate GPT response: {:?}", e);
+                return None;
+            }
+        };
+
+        // Parse GPT response
+        let response_en = self.parse_response(gpt_response.message.content.as_str())?;
+        let response_ru = match self.deepl_tl.translate(&response_en, "RU").await {
+            Ok(message) => message,
+            Err(e) => {
+                error!("Failed to translate response: {:?}", e);
+                return None;
+            }
+        };
+
+        // Put response to database
+        if let Err(e) = self
+            .database
+            .add_message(&DbMessage {
+                channel: channel_id.to_string(),
+                sender: "Kasumi".to_string(),
+                message_en: response_en,
+                message_ru: response_ru.clone(),
+                date_time: Utc::now().naive_utc(),
+            })
+            .await
+        {
+            error!("Failed to put response to database: {:?}", e);
+            return None;
+        }
+
+        Some(response_ru)
+    }
+
+    fn parse_response(&self, response: &str) -> Option<String> {
+        let re = Regex::new(r"USER (.+) SAYS (.+) END").unwrap();
+        let caps = re.captures(response)?;
+        let user = caps.get(1)?.as_str().trim().to_lowercase();
+        debug!("User: {}", user);
+        if user != "kasumi" {
+            return None;
+        }
+        let message = caps.get(2)?.as_str().trim().to_string();
+        debug!("Message: {}", message);
+        Some(message)
+    }
+
+    async fn get_prompt(&mut self, channel_id: u64) -> anyhow::Result<Vec<GptMessage>> {
+        let system_prompt = self.get_system_prompt(channel_id).await?;
+        debug!("System prompt: {}", system_prompt);
+        let gpt_request = vec![
+            GptMessage {
+                role: GptRole::System,
+                content: system_prompt,
+            },
+            GptMessage {
+                role: GptRole::User,
+                content: CHAT_USER_PROMPT.to_string(),
+            },
+        ];
+        Ok(gpt_request)
     }
 
     async fn has_new(&mut self, channel_id: u64) -> bool {
@@ -88,5 +164,42 @@ impl Bot {
             *map.entry(channel_id).or_insert(0)
         };
         old != last
+    }
+
+    async fn get_system_prompt(&self, channel: u64) -> anyhow::Result<String> {
+        let DbSummary {
+            summary,
+            last_update,
+            ..
+        } = self
+            .database
+            .get_summary(channel)
+            .await?
+            .unwrap_or_default();
+
+        let messages = self.database.get_messages(channel, last_update, 10).await?;
+
+        let mut users = messages
+            .iter()
+            .filter(|m| m.sender != "Kasumi")
+            .map(|m| m.sender.to_string())
+            .unique()
+            .collect::<Vec<_>>();
+        users.push("Kasumi".to_string());
+
+        let users = self.database.get_users(&users).await?;
+
+        let now = Utc::now();
+        let date = now.format("%e %B %Y").to_string();
+        let time = now.format("%r").to_string();
+
+        Ok(ChatSystem {
+            users: &users[..],
+            date: &date,
+            time: &time,
+            summary: &summary,
+            messages: &messages[..],
+        }
+        .render()?)
     }
 }

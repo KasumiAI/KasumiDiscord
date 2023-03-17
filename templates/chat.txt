@@ -1,0 +1,12 @@
+USER INFO:
+{% for user in users %}USER {{ user.name }} INFO {{ user.info }} END
+{% endfor %}
+CURRENT DATE: {{ date }}
+CURRENT TIME: {{ time }}
+{% if summary.len() > 0 %}
+CHAT LOG SUMMARY:
+{{ summary }}
+{% endif %}
+CHAT LOG:
+{% for message in messages %}USER {{ message.sender }} SAYS {{ message.message_en }} END
+{% else %}USER Kasumi SAYS Hello everyone! END{% endfor %}

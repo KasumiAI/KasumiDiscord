@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::debug;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum GptRole {
@@ -104,6 +105,8 @@ impl ChatGPT {
             temperature,
         };
 
+        debug!("GPT Sending request: {:?}", request);
+
         let resp = self
             .client
             .post("https://api.openai.com/v1/chat/completions")
@@ -113,6 +116,8 @@ impl ChatGPT {
             .await?
             .json::<GptResponse>()
             .await?;
+
+        debug!("GPT response: {:?}", resp);
 
         match resp {
             GptResponse {

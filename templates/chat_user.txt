@@ -1,0 +1,6 @@
+Do the following:
+1. Summarize all the information from the chat that is related to the last message.
+2. Deduce who will respond to the last message.
+3. Write the message as that user.
+Write the message in the following format:
+USER {nickname} SAYS {predicted message} END

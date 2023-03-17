@@ -1,0 +1,3 @@
+struct Summarizer {
+    summary: String,
+}

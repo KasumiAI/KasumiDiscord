@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::prelude::*;
+use itertools::Itertools;
 use sqlx::sqlite::SqlitePool;
 use tokio::sync::Mutex;
 
@@ -15,7 +16,7 @@ pub struct DbMessage {
     pub date_time: NaiveDateTime,
 }
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct DbUser {
     pub name: String,
     pub info: String,
@@ -27,6 +28,16 @@ pub struct DbSummary {
     pub channel: String,
     pub summary: String,
     pub last_update: NaiveDateTime,
+}
+
+impl Default for DbSummary {
+    fn default() -> Self {
+        Self {
+            channel: String::new(),
+            summary: String::new(),
+            last_update: Utc::now().naive_utc(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -123,7 +134,7 @@ VALUES ( ?1, ?2, ?3, ?4, ?5 )"#,
         Ok(())
     }
 
-    pub async fn get_users(&self, names: &[&str]) -> Result<Vec<DbUser>, sqlx::error::Error> {
+    pub async fn get_users(&self, names: &[String]) -> Result<Vec<DbUser>, sqlx::error::Error> {
         let names = names
             .iter()
             .map(|name| format!("'{}'", name))
@@ -131,13 +142,12 @@ VALUES ( ?1, ?2, ?3, ?4, ?5 )"#,
             .join(", ");
 
         let mut conn = self.pool.lock().await.acquire().await?;
-        let mut users = sqlx::query_as!(
-            DbUser,
+        let users: Vec<DbUser> = sqlx::query_as(&format!(
             r#"
-SELECT name as "name!", info as "info!", last_update as "last_update!"
-FROM users WHERE name IN ( ? )"#,
+SELECT name, info, last_update
+FROM users WHERE name IN ( {} )"#,
             names
-        )
+        ))
         .fetch_all(&mut conn)
         .await?;
 
@@ -198,5 +208,24 @@ VALUES (?1, ?2, ?3);"#,
         .await?;
 
         Ok(())
+    }
+
+    async fn channel_list(&self) -> Result<Vec<u64>, sqlx::error::Error> {
+        struct Channel {
+            channel: String,
+        }
+        let mut conn = self.pool.lock().await.acquire().await?;
+        let channels = sqlx::query_as!(
+            Channel,
+            r#"
+SELECT DISTINCT channel
+FROM messages"#
+        )
+        .fetch_all(&mut conn)
+        .await?;
+        Ok(channels
+            .iter()
+            .filter_map(|s| s.channel.parse().ok())
+            .collect())
     }
 }

@@ -16,6 +16,8 @@ mod bot;
 mod database;
 mod envs;
 mod gpt;
+mod prompts;
+mod summarizer;
 mod translate;
 
 struct DatabaseContainer;
@@ -79,7 +81,7 @@ impl EventHandler for Handler {
 async fn main() -> anyhow::Result<()> {
     // logs
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::DEBUG)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
