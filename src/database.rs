@@ -10,8 +10,7 @@ use crate::envs;
 pub struct DbMessage {
     pub channel: String,
     pub sender: String,
-    pub message_en: String,
-    pub message_ru: String,
+    pub message: String,
     pub date_time: NaiveDateTime,
 }
 
@@ -79,7 +78,7 @@ impl Database {
             DbMessage,
             r#"
 SELECT channel as "channel!", sender as "sender!",
-message_en as "message_en!", message_ru as "message_ru!", date_time as "date_time!"
+message as "message!", date_time as "date_time!"
 FROM messages
 WHERE channel = ? AND date_time > ?
 ORDER BY date_time DESC"#,
@@ -103,7 +102,7 @@ ORDER BY date_time DESC"#,
             DbMessage,
             r#"
 SELECT channel as "channel!", sender as "sender!",
-message_en as "message_en!", message_ru as "message_ru!", date_time as "date_time!"
+message as "message!", date_time as "date_time!"
 FROM messages
 WHERE channel = ?
 ORDER BY date_time DESC
@@ -121,12 +120,11 @@ LIMIT ?"#,
         let mut conn = self.pool.lock().await.acquire().await?;
         sqlx::query!(
             r#"
-INSERT INTO messages ( channel, sender, message_en, message_ru, date_time )
-VALUES ( ?1, ?2, ?3, ?4, ?5 )"#,
+INSERT INTO messages ( channel, sender, message, date_time )
+VALUES ( ?1, ?2, ?3, ?4)"#,
             message.channel,
             message.sender,
-            message.message_en,
-            message.message_ru,
+            message.message,
             message.date_time
         )
         .execute(&mut conn)

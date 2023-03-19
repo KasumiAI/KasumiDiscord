@@ -8,12 +8,6 @@ pub static OPENAI_KEY: Lazy<String> = Lazy::new(|| {
         .to_string()
 });
 
-pub static DEEPL_KEY: Lazy<String> = Lazy::new(|| {
-    env::var("DEEPL_KEY")
-        .expect("Expected a DEEPL_KEY in the environment")
-        .to_string()
-});
-
 pub static DISCORD_TOKEN: Lazy<String> = Lazy::new(|| {
     env::var("DISCORD_TOKEN")
         .expect("Expected a DISCORD_TOKEN in the environment")

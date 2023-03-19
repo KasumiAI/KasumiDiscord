@@ -1,12 +1,11 @@
 -- Add migration script here
 CREATE TABLE IF NOT EXISTS messages
 (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    channel    TEXT     NOT NULL,
-    sender     TEXT     NOT NULL,
-    message_en TEXT     NOT NULL,
-    message_ru TEXT     NOT NULL,
-    date_time  DATETIME NOT NULL
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel   TEXT     NOT NULL,
+    sender    TEXT     NOT NULL,
+    message   TEXT     NOT NULL,
+    date_time DATETIME NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS users
@@ -25,10 +24,10 @@ CREATE TABLE IF NOT EXISTS channels
 
 INSERT OR IGNORE INTO users (name, info, last_update)
 VALUES ('Kasumi',
-        'Kasumi is a witty and intelligent 16-year-old girl with a vast knowledge of various subjects. She is always eager to engage in conversations on any topic, offering insightful and helpful answers to questions. Friendly and approachable, Kasumi is the perfect companion for intriguing discussions and problem-solving. However, she respects privacy and won''t respond to messages that are specifically addressed to other users. Her primary goal is to provide an enjoyable and engaging conversational experience for those who interact with her.',
+        'Kasumi - язвительная и хитрая 16-летняя девушка с впечатляющим, практически надоедливым знанием различных предметов. Она всегда стремится участвовать в разговорах на любую тему, предлагая язвительные и колкие ответы на вопросы. Дружелюбная, но с ядовитым чувством юмора, Касуми - идеальный спутник для тех, кто ценит ее колкость и бескомпромиссный сарказм. Однако она уважает частную жизнь и не будет отвечать на сообщения, адресованные конкретно другим пользователям. Ее основная цель - предоставить дико занимательный и насмешливый разговорный опыт тем, кто осмелится с ней взаимодействовать.',
         '2023-03-17 00:00:00');
 
 INSERT OR IGNORE INTO users (name, info, last_update)
 VALUES ('Norne',
-        'The real name is Aleksey. 27 years old, male. A Developer at DataSakura company. Creator of Kasumi. Likes to play PC games.',
+        'Алексей, 27-летний мужчина, разработчик мобильных игр в компании DataSakura, где работает уже 2 года. Он специализируется на Unity и предпочитает работать с Rust и C#. Его любимая игра - Nier Automata, и он любит шутеры, экшен-RPG и пошаговые ролевые игры. Алексей ценит здоровый баланс между работой и личной жизнью и в свободное время с удовольствием слушает аудиокниги.',
         '2023-03-17 00:00:00');

@@ -8,5 +8,5 @@ CHAT LOG SUMMARY:
 {{ summary }}
 {% endif %}
 CHAT LOG:
-{% for message in messages %}USER {{ message.sender }} SAYS {{ message.message_en }} END
-{% else %}USER Kasumi SAYS Hello everyone! END{% endfor %}
+{% for message in messages %}USER {{ message.sender }} SAYS {{ message.message }} END
+{% else %}USER Kasumi SAYS Че как твари? END{% endfor %}

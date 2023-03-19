@@ -14,7 +14,6 @@ mod envs;
 mod gpt;
 mod prompts;
 mod summarizer;
-mod translate;
 
 struct BotContainer;
 
@@ -97,9 +96,7 @@ async fn main() -> anyhow::Result<()> {
 
     // create bot
     let gpt = gpt::ChatGPT::new(&envs::OPENAI_KEY);
-    let google_tl = translate::GoogleTranslate::new();
-    let deepl_tl = translate::DeepLTranslate::new(&envs::DEEPL_KEY);
-    let bot = bot::Bot::new(database.clone(), gpt.clone(), google_tl, deepl_tl);
+    let bot = bot::Bot::new(database.clone(), gpt.clone());
 
     // create summarizer
     let summarizer = summarizer::Summarizer::new(gpt.clone(), database.clone());
@@ -141,9 +138,10 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn init_logs() -> WorkerGuard {
+    use tracing_subscriber::filter;
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
-    use tracing_subscriber::{filter, Layer};
+    use tracing_subscriber::Layer;
 
     let file_appender = tracing_appender::rolling::hourly("logs", "prefix.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
@@ -154,7 +152,8 @@ fn init_logs() -> WorkerGuard {
         .with_filter(filter::LevelFilter::DEBUG);
 
     let stdio_subscriber = tracing_subscriber::fmt::layer()
-        .pretty()
+        .compact()
+        .with_filter(filter::filter_fn(|data| data.target() != "sqlx::query"))
         .with_filter(filter::LevelFilter::INFO);
 
     tracing_subscriber::registry()

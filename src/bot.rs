@@ -9,29 +9,20 @@ use tracing::error;
 use crate::gpt::{ChatGPT, GptFinishReason};
 use crate::prompts::{get_prompt, CHAT_USER_PROMPT};
 use crate::summarizer::summarize_now;
-use crate::{translate, Database, DbMessage};
+use crate::{Database, DbMessage};
 
 #[derive(Clone)]
 pub struct Bot {
     database: Database,
     gpt: ChatGPT,
-    google_tl: translate::GoogleTranslate,
-    deepl_tl: translate::DeepLTranslate,
     channel_last: Arc<Mutex<HashMap<u64, u64>>>,
 }
 
 impl Bot {
-    pub fn new(
-        database: Database,
-        gpt: ChatGPT,
-        google_tl: translate::GoogleTranslate,
-        deepl_tl: translate::DeepLTranslate,
-    ) -> Self {
+    pub fn new(database: Database, gpt: ChatGPT) -> Self {
         Self {
             database,
             gpt,
-            google_tl,
-            deepl_tl,
             channel_last: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -42,23 +33,13 @@ impl Bot {
         sender: &str,
         message: &str,
     ) -> Option<String> {
-        // translate message to english
-        let message_en = match self.google_tl.translate(message, "en").await {
-            Ok(message) => message,
-            Err(e) => {
-                error!("Failed to translate message: {:?}", e);
-                return None;
-            }
-        };
-
         // add message to database
         if let Err(e) = self
             .database
             .add_message(&DbMessage {
                 channel: channel_id.to_string(),
                 sender: sender.to_string(),
-                message_en: message_en.to_string(),
-                message_ru: message.to_string(),
+                message: message.to_string(),
                 date_time: Utc::now().naive_utc(),
             })
             .await
@@ -74,7 +55,7 @@ impl Bot {
 
         // Make GPT prompt
         let (gpt_request, _) =
-            match get_prompt(&self.database, channel_id, CHAT_USER_PROMPT, 10).await {
+            match get_prompt(&self.database, channel_id, CHAT_USER_PROMPT, 6).await {
                 Ok(request) => request,
                 Err(e) => {
                     error!("Failed to generate GPT prompt: {:?}", e);
@@ -99,14 +80,7 @@ impl Bot {
         }
 
         // Parse GPT response
-        let response_en = self.parse_response(gpt_response.message.content.as_str())?;
-        let response_ru = match self.deepl_tl.translate(&response_en, "RU").await {
-            Ok(message) => message,
-            Err(e) => {
-                error!("Failed to translate response: {:?}", e);
-                return None;
-            }
-        };
+        let response = self.parse_response(gpt_response.message.content.as_str())?;
 
         // Put response to database
         if let Err(e) = self
@@ -114,8 +88,7 @@ impl Bot {
             .add_message(&DbMessage {
                 channel: channel_id.to_string(),
                 sender: "Kasumi".to_string(),
-                message_en: response_en,
-                message_ru: response_ru.clone(),
+                message: response.to_string(),
                 date_time: Utc::now().naive_utc(),
             })
             .await
@@ -124,7 +97,7 @@ impl Bot {
             return None;
         }
 
-        Some(response_ru)
+        Some(response)
     }
 
     fn parse_response(&self, response: &str) -> Option<String> {
