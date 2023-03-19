@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::sync::Mutex;
 use tracing::debug;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,7 +28,7 @@ pub struct GptMessage {
 
 #[derive(Clone)]
 pub struct ChatGPT {
-    key: Arc<Mutex<String>>,
+    key: String,
     client: reqwest::Client,
 }
 
@@ -93,7 +90,7 @@ struct GptRequest<'s> {
 impl ChatGPT {
     pub fn new(key: &str) -> Self {
         Self {
-            key: Arc::new(Mutex::new(key.to_string())),
+            key: key.to_string(),
             client: reqwest::Client::new(),
         }
     }
@@ -111,13 +108,11 @@ impl ChatGPT {
 
         debug!("GPT Sending request: {:?}", request);
 
-        let key = self.key.lock().await;
-
         let resp = self
             .client
             .post("https://api.openai.com/v1/chat/completions")
             .json(&request)
-            .header("Authorization", format!("Bearer {}", key))
+            .header("Authorization", format!("Bearer {}", &self.key))
             .send()
             .await?
             .json::<GptResponse>()
