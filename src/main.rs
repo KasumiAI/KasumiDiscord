@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use regex::{Captures, Regex};
 use serenity::async_trait;
 use serenity::model::channel::Message;
@@ -6,9 +8,11 @@ use serenity::prelude::*;
 use tracing::{error, info, warn};
 use tracing_appender::non_blocking::WorkerGuard;
 
+use crate::channel_typing::TypingManager;
 use crate::database::{Database, DbMessage};
 
 mod bot;
+mod channel_typing;
 mod database;
 mod envs;
 mod gpt;
@@ -19,6 +23,12 @@ struct BotContainer;
 
 impl TypeMapKey for BotContainer {
     type Value = bot::Bot;
+}
+
+struct TypingContainer;
+
+impl TypeMapKey for TypingContainer {
+    type Value = Arc<Mutex<TypingManager>>;
 }
 
 struct Handler;
@@ -33,6 +43,19 @@ impl EventHandler for Handler {
 
         if msg.author.bot {
             return;
+        }
+
+        let typing_manager = {
+            let data_read = ctx.data.read().await;
+            data_read
+                .get::<TypingContainer>()
+                .expect("Expected TypingContainer in TypeMap.")
+                .clone()
+        };
+
+        {
+            let mut typing_manager = typing_manager.lock().await;
+            typing_manager.start_typing(msg.channel_id.0, ctx.http.clone());
         }
 
         let mut bot = {
@@ -52,6 +75,11 @@ impl EventHandler for Handler {
             if let Err(why) = msg.channel_id.say(&ctx.http, reply).await {
                 warn!("Error sending reply: {:?}", why);
             }
+        }
+
+        {
+            let mut typing_manager = typing_manager.lock().await;
+            typing_manager.stop_typing(msg.channel_id.0);
         }
     }
 
@@ -114,6 +142,7 @@ async fn main() -> anyhow::Result<()> {
     {
         let mut data = client.data.write().await;
         data.insert::<BotContainer>(bot);
+        data.insert::<TypingContainer>(Arc::new(Mutex::new(TypingManager::new())));
     }
 
     // Start bot and wait for enter

@@ -101,7 +101,7 @@ impl Bot {
     }
 
     fn parse_response(&self, response: &str) -> Option<String> {
-        let re = Regex::new(r"USER (.+?) SAYS (.+?) END").unwrap();
+        let re = Regex::new(r#"USER (.+?) SAYS "?(.+?)"? END"#).unwrap();
         let caps = re.captures(response)?;
         let user = caps.get(1)?.as_str().trim().to_lowercase();
         if user != "kasumi" {

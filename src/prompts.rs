@@ -45,7 +45,7 @@ async fn get_system_prompt(
     let users = database.get_users(&users).await?;
 
     let now = Utc::now();
-    let date = now.format("%e %B %Y").to_string();
+    let date = now.format("%e %B %Y, %A").to_string();
     let time = now.format("%r").to_string();
 
     Ok((
