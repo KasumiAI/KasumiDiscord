@@ -45,6 +45,11 @@ impl EventHandler for Handler {
             return;
         }
 
+        let message = Self::replace_ids(&ctx, &msg).await;
+        if message.is_empty() {
+            return;
+        }
+
         let typing_manager = {
             let data_read = ctx.data.read().await;
             data_read
@@ -65,8 +70,6 @@ impl EventHandler for Handler {
                 .expect("Expected BotContainer in TypeMap.")
                 .clone()
         };
-
-        let message = Self::replace_ids(&ctx, &msg).await;
 
         if let Some(reply) = bot
             .process_message(msg.channel_id.0, &msg.author.name, &message)
@@ -108,9 +111,9 @@ impl Handler {
                 })
                 .to_string()
         } else {
-            msg.content.clone()
+            msg.content.trim().to_string()
         };
-        message
+        message.trim().to_string()
     }
 }
 

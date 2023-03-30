@@ -113,6 +113,7 @@ impl ChatGPT {
             .post("https://api.openai.com/v1/chat/completions")
             .json(&request)
             .header("Authorization", format!("Bearer {}", &self.key))
+            .timeout(std::time::Duration::from_secs(100))
             .send()
             .await?
             .json::<GptResponse>()
